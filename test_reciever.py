@@ -15,25 +15,34 @@ print(f"🚀 Server listening on {HOST}:{PORT}")
 conn, addr = server_socket.accept()
 print(f"🔗 Connected by {addr}")
 
-# 🔹 Receive filename length and filename
+# 🔹 Step 1: Receive secret key
+key_size = struct.unpack("I", conn.recv(4))[0]  # Read key size
+secret_key = conn.recv(key_size)  # Read key data
+
+# 🔹 Save secret key to a file
+with open("received_secret.key", "wb") as key_file:
+    key_file.write(secret_key)
+print("[*] Secret key received and saved.")
+
+# 🔹 Step 2: Receive filename length and filename
 filename_length = struct.unpack("I", conn.recv(4))[0]
 filename = conn.recv(filename_length).decode()
 
-# 🔹 Receive encrypted file size
+# 🔹 Step 3: Receive encrypted file size
 file_size = struct.unpack("I", conn.recv(4))[0]
 
-# 🔹 Receive encrypted file data
+# 🔹 Step 4: Receive encrypted file data
 encrypted_data = b""
 while len(encrypted_data) < file_size:
     encrypted_data += conn.recv(4096)
 
-# 🔹 Decrypt the file data
-decrypted_data = decrypt_data(encrypted_data)
+# 🔹 Step 5: Decrypt the file data using the received secret key
+decrypted_data = decrypt_data(encrypted_data, secret_key)
 
-# 🔹 Save decrypted file
+# 🔹 Step 6: Save decrypted file
 with open(f"received_{filename}", "wb") as f:
     f.write(decrypted_data)
 
-print(f"✅ File '{filename}' received and decrypted successfully")
+print(f"✅ File '{filename}' received and decrypted successfully!")
 conn.close()
 server_socket.close()

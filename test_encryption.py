@@ -24,8 +24,8 @@ def encrypt_data(data):
     return iv + encrypted_data  # Prepend IV for decryption
 
 # 🔹 Decrypt Function
-def decrypt_data(data):
+def decrypt_data(data, key):
     iv = data[:16]  # Extract IV
-    cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
     decrypted_data = unpad(cipher.decrypt(data[16:]), AES.block_size)
     return decrypted_data

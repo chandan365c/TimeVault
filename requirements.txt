@@ -1,0 +1,2 @@
+pycryptodome
+source venv/bin/activate
