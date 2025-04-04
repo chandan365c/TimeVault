@@ -1,48 +1,60 @@
+# receiver.py
+
 import socket
 import struct
-from test_encryption import decrypt_data  # Import decryption function
+import threading
+import os
+import time
+from test_encryption import load_private_key, decrypt_aes_key, decrypt_data
 
-HOST = "0.0.0.0"  # Listen on all interfaces
+HOST = "0.0.0.0"
 PORT = 12345
 
-# 🔹 Set up the server socket
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind((HOST, PORT))
-server_socket.listen(5)
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind((HOST, PORT))
+server.listen(5)
+print(f"🚀 Listening on {HOST}:{PORT}")
 
-print(f"🚀 Server listening on {HOST}:{PORT}")
-
-conn, addr = server_socket.accept()
+conn, addr = server.accept()
 print(f"🔗 Connected by {addr}")
 
-# 🔹 Step 1: Receive secret key
-key_size = struct.unpack("I", conn.recv(4))[0]  # Read key size
-secret_key = conn.recv(key_size)  # Read key data
+# Receive filename
+filename_len = struct.unpack("I", conn.recv(4))[0]
+filename = conn.recv(filename_len).decode()
 
-# 🔹 Save secret key to a file
-with open("received_secret.key", "wb") as key_file:
-    key_file.write(secret_key)
-print("[*] Secret key received and saved.")
+# Receive deletion timer
+delete_after = struct.unpack("I", conn.recv(4))[0]
 
-# 🔹 Step 2: Receive filename length and filename
-filename_length = struct.unpack("I", conn.recv(4))[0]
-filename = conn.recv(filename_length).decode()
+# Receive encrypted AES key
+key_len = struct.unpack("I", conn.recv(4))[0]
+encrypted_key = conn.recv(key_len)
 
-# 🔹 Step 3: Receive encrypted file size
-file_size = struct.unpack("I", conn.recv(4))[0]
+# Decrypt AES key
+rsa_priv_key = load_private_key("receiver_private.pem")
+aes_key = decrypt_aes_key(encrypted_key, rsa_priv_key)
 
-# 🔹 Step 4: Receive encrypted file data
-encrypted_data = b""
-while len(encrypted_data) < file_size:
-    encrypted_data += conn.recv(4096)
+# Receive encrypted file
+file_len = struct.unpack("I", conn.recv(4))[0]
+file_data = b""
+while len(file_data) < file_len:
+    file_data += conn.recv(4096)
 
-# 🔹 Step 5: Decrypt the file data using the received secret key
-decrypted_data = decrypt_data(encrypted_data, secret_key)
+# Decrypt and save
+decrypted = decrypt_data(file_data, aes_key)
+filepath = f"received_{filename}"
+with open(filepath, "wb") as f:
+    f.write(decrypted)
 
-# 🔹 Step 6: Save decrypted file
-with open(f"received_{filename}", "wb") as f:
-    f.write(decrypted_data)
+print(f"✅ Received and saved file: {filepath}")
 
-print(f"✅ File '{filename}' received and decrypted successfully!")
+# Timer thread to delete file
+def auto_delete(path, delay):
+    time.sleep(delay)
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"🗑️ Auto-deleted '{path}' after {delay} seconds.")
+
+threading.Thread(target=auto_delete, args=(filepath, delete_after)).start()
+
 conn.close()
-server_socket.close()
+server.close()
