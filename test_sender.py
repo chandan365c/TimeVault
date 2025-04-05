@@ -2,9 +2,10 @@ import socket
 import struct
 import tkinter as tk
 from tkinter import filedialog
-from test_encryption import encrypt_data, load_public_key, encrypt_aes_key, generate_rsa_keys
+from test_encryption import encrypt_data, encrypt_aes_key
 import os
 import time
+from Crypto.PublicKey import RSA
 
 def discover_receivers(timeout=3):
     message = "DISCOVER_RECEIVER"
@@ -43,9 +44,6 @@ for i, (name, ip) in enumerate(receivers):
 choice = int(input("Select a receiver to send the file to: ")) - 1
 receiver_ip = receivers[choice][1]
 
-generate_rsa_keys()
-print("✅ RSA key pair generated: 'receiver_public.pem' and 'receiver_private.pem'")
-
 HOST = receiver_ip
 PORT = 12345
 
@@ -66,11 +64,19 @@ with open(filename, "rb") as f:
 aes_key = os.urandom(32)
 encrypted_file_data = encrypt_data(file_data, aes_key)
 
-rsa_pub_key = load_public_key("receiver_public.pem")
-encrypted_aes_key = encrypt_aes_key(aes_key, rsa_pub_key)
-
+# Connect to receiver
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((HOST, PORT))
+
+# Receive receiver's public RSA key
+key_len = struct.unpack("I", client.recv(4))[0]
+receiver_pubkey_data = client.recv(key_len)
+
+# Load public key from received data
+rsa_pub_key = RSA.import_key(receiver_pubkey_data)
+
+# Encrypt AES key using received public key
+encrypted_aes_key = encrypt_aes_key(aes_key, rsa_pub_key)
 
 file_name_only = os.path.basename(filename)
 

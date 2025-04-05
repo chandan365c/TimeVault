@@ -3,7 +3,7 @@ import struct
 import threading
 import os
 import time
-from test_encryption import load_private_key, decrypt_aes_key, decrypt_data
+from test_encryption import load_private_key, decrypt_aes_key, decrypt_data, generate_rsa_keys
 import tkinter as tk
 from threading import Thread
 import platform
@@ -22,6 +22,8 @@ def respond_to_discovery():
 
 threading.Thread(target=respond_to_discovery, daemon=True).start()
 
+generate_rsa_keys()
+print("✅ RSA key pair generated: 'receiver_public.pem' and 'receiver_private.pem'")
 
 HOST = "0.0.0.0"
 PORT = 12345
@@ -33,6 +35,14 @@ print(f"🚀 Listening on {HOST}:{PORT}")
 
 conn, addr = server.accept()
 print(f"🔗 Connected by {addr}")
+
+# Send public RSA key to sender
+with open("receiver_public.pem", "rb") as pubkey_file:
+    public_key_data = pubkey_file.read()
+    key_len = struct.pack("I", len(public_key_data))
+    conn.sendall(key_len + public_key_data)
+print("📤 Sent RSA public key to sender.")
+
 
 # Receive filename
 filename_len = struct.unpack("I", conn.recv(4))[0]
