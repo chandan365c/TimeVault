@@ -31,7 +31,7 @@ def discover_receivers(timeout=3):
 
     return responses
 
-# Call the function to find out receivers in local network
+# Discover receivers
 receivers = discover_receivers()
 if not receivers:
     print("❌ No receivers found on the network.")
@@ -47,7 +47,7 @@ receiver_ip = receivers[choice][1]
 HOST = receiver_ip
 PORT = 12345
 
-# GUI for file and timer input
+# File and timer input
 root = tk.Tk()
 root.withdraw()
 filename = filedialog.askopenfilename(title="Select file to send")
@@ -61,26 +61,33 @@ delete_after = int(input("🕒 Enter auto-deletion time (in seconds): "))
 with open(filename, "rb") as f:
     file_data = f.read()
 
-aes_key = os.urandom(32)
-encrypted_file_data = encrypt_data(file_data, aes_key)
-
 # Connect to receiver
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((HOST, PORT))
 
 # Receive receiver's public RSA key
-key_len = struct.unpack("I", client.recv(4))[0]
-receiver_pubkey_data = client.recv(key_len)
+key_len_data = client.recv(4)
+if len(key_len_data) < 4:
+    raise Exception("Failed to receive key length.")
 
-# Load public key from received data
+key_len = struct.unpack("I", key_len_data)[0]
+receiver_pubkey_data = b""
+while len(receiver_pubkey_data) < key_len:
+    receiver_pubkey_data += client.recv(key_len - len(receiver_pubkey_data))
+
+print("✅ Received receiver's public RSA key.")
+
+# Load public key
 rsa_pub_key = RSA.import_key(receiver_pubkey_data)
 
-# Encrypt AES key using received public key
+# Encrypt file and AES key
+aes_key = os.urandom(32)
+encrypted_file_data = encrypt_data(file_data, aes_key)
 encrypted_aes_key = encrypt_aes_key(aes_key, rsa_pub_key)
 
 file_name_only = os.path.basename(filename)
 
-# Send metadata: filename + timer
+# Send filename and timer
 client.send(struct.pack("I", len(file_name_only)))
 client.send(file_name_only.encode())
 client.send(struct.pack("I", delete_after))
