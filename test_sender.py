@@ -2,7 +2,7 @@ import socket
 import struct
 import tkinter as tk
 from tkinter import filedialog
-from test_encryption import encrypt_data, encrypt_aes_key
+from test_encryption import encrypt_data, encrypt_aes_key, generate_aes_key
 import os
 import time
 from Crypto.PublicKey import RSA
@@ -81,7 +81,7 @@ print("✅ Received receiver's public RSA key.")
 rsa_pub_key = RSA.import_key(receiver_pubkey_data)
 
 # Encrypt file and AES key
-aes_key = os.urandom(32)
+aes_key = generate_aes_key()
 encrypted_file_data = encrypt_data(file_data, aes_key)
 encrypted_aes_key = encrypt_aes_key(aes_key, rsa_pub_key)
 
@@ -102,3 +102,48 @@ client.sendall(encrypted_file_data)
 
 print(f"✅ '{file_name_only}' sent with {delete_after}s auto-deletion")
 client.close()
+
+
+# import socket
+# import struct
+# import os
+# from test_encryption import encrypt_data, encrypt_aes_key
+# from Crypto.PublicKey import RSA
+
+# def create_packet(packet_type, payload):
+#     return packet_type + payload  # Simple: 4-byte header + data
+
+# def send_raw_packet(dest_ip, payload):
+#     sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+
+#     # IP header will be auto-filled by OS if we use IPPROTO_RAW
+#     sock.sendto(payload, (dest_ip, 0))
+
+# # === Prepare data ===
+# filename = "my_secret.pdf"
+# delete_after = 10
+
+# with open(filename, "rb") as f:
+#     data = f.read()
+
+# aes_key = os.urandom(32)
+# encrypted_data = encrypt_data(data, aes_key)
+
+# rsa_pub_key = RSA.import_key(open("receiver_public.pem", "rb").read())
+# encrypted_aes_key = encrypt_aes_key(aes_key, rsa_pub_key)
+
+# dest_ip = "192.168.0.101"  # Set receiver IP manually
+
+# # === Send packets ===
+# send_raw_packet(dest_ip, create_packet(b'META', struct.pack("I", delete_after) + filename.encode()))
+# send_raw_packet(dest_ip, create_packet(b'KEY_', encrypted_aes_key))
+
+# # Break data into chunks
+# chunk_size = 1400
+# for i in range(0, len(encrypted_data), chunk_size):
+#     chunk = encrypted_data[i:i+chunk_size]
+#     send_raw_packet(dest_ip, create_packet(b'DATA', chunk))
+
+# send_raw_packet(dest_ip, create_packet(b'END_', b'done'))
+
+# print("✅ Sent via raw sockets.")

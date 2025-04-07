@@ -8,6 +8,17 @@ import tkinter as tk
 from threading import Thread
 import platform
 
+# Get actual local IP instead of loopback (127.0.0.1)
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))  # Doesn't send data, just determines outbound IP
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
+
 #Alert the sender with the receiver's IP
 def respond_to_discovery():
     discovery_port = 50000
@@ -17,7 +28,7 @@ def respond_to_discovery():
     while True:
         data, addr = sock.recvfrom(1024)
         if data.decode() == "DISCOVER_RECEIVER":
-            response = f"{platform.node()}|{socket.gethostbyname(socket.gethostname())}"
+            response = f"{platform.node()}|{get_local_ip()}"
             sock.sendto(response.encode(), addr)
 
 threading.Thread(target=respond_to_discovery, daemon=True).start()
@@ -117,3 +128,48 @@ threading.Thread(target=auto_delete, args=(filepath, delete_after)).start()
 
 conn.close()
 server.close()
+
+
+# import socket
+# import struct
+# import os
+# from test_encryption import load_private_key, decrypt_data, decrypt_aes_key
+
+# sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
+# sock.bind(("0.0.0.0", 0))  # Listen on all interfaces
+
+# received_chunks = []
+# aes_key = None
+# filename = None
+# delete_after = 0
+
+# while True:
+#     packet = sock.recv(65535)
+    
+#     # Skip IP + TCP headers (assume minimal 20 + 20)
+#     payload = packet[40:]
+
+#     if payload[:4] == b'META':
+#         delete_after = struct.unpack("I", payload[4:8])[0]
+#         filename = payload[8:].decode()
+#         print(f"📥 File: {filename}, delete after {delete_after}s")
+
+#     elif payload[:4] == b'KEY_':
+#         encrypted_key = payload[4:]
+#         rsa_key = load_private_key("receiver_private.pem")
+#         aes_key = decrypt_aes_key(encrypted_key, rsa_key)
+
+#     elif payload[:4] == b'DATA':
+#         received_chunks.append(payload[4:])
+
+#     elif payload[:4] == b'END_':
+#         break
+
+# # Combine and decrypt
+# full_data = b''.join(received_chunks)
+# decrypted = decrypt_data(full_data, aes_key)
+
+# with open(f"received_{filename}", "wb") as f:
+#     f.write(decrypted)
+
+# print(f"✅ File saved: received_{filename}")
