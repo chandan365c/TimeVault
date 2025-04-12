@@ -1,149 +1,128 @@
+import os
 import socket
-import struct
+import time
+import threading
 import tkinter as tk
 from tkinter import filedialog
-from test_encryption import encrypt_data, encrypt_aes_key, generate_aes_key
-import os
-import time
-from Crypto.PublicKey import RSA
+from sender.state_manager import SenderState
+from sender.crypto_utils import generate_aes_key_and_nonce, encrypt_aes_key_with_rsa
+from sender.file_utils import read_file_chunks
+from sender.constants import PacketType
+from sender.packet_dispatcher import dispatch_packet
+from sender.packet_handlers import send_file_chunks
+from sender.discovery import discover_receivers
 
-def discover_receivers(timeout=3):
-    message = "DISCOVER_RECEIVER"
-    discovery_port = 50000
-    responses = []
+# === Config ===
+RECEIVER_PORT = 54321
+BUFFER_SIZE = 65535
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    sock.settimeout(timeout)
-
-    sock.sendto(message.encode(), ('<broadcast>', discovery_port))
-    start = time.time()
-
-    try:
-        while time.time() - start < timeout:
-            data, addr = sock.recvfrom(1024)
-            name, ip = data.decode().split("|")
-            responses.append((name, ip))
-    except socket.timeout:
-        pass
-    finally:
-        sock.close()
-
-    return responses
-
-# Discover receivers
+# === Setup State ===
+state = SenderState()
+print("📡 Scanning for receivers on local network...")
 receivers = discover_receivers()
-if not receivers:
-    print("❌ No receivers found on the network.")
-    exit()
 
+if not receivers:
+    print("❌ No receivers found. Exiting.")
+    exit(1)
+
+# === Select Receiver ===
 print("\nAvailable receivers:")
-for i, (name, ip) in enumerate(receivers):
+for i, receiver in enumerate(receivers):
+    name = receiver['hostname']
+    ip = receiver['ip']
     print(f"{i+1}. {name} ({ip})")
 
 choice = int(input("Select a receiver to send the file to: ")) - 1
-receiver_ip = receivers[choice][1]
+receiver = receivers[choice]  # Get the selected receiver's dictionary
+receiver_ip = receiver['ip']  # Access the 'ip' key from the dictionary
+state.receiver_addr = (receiver_ip, RECEIVER_PORT)
 
-HOST = receiver_ip
-PORT = 12345
+print(f"✅ Selected receiver: {receiver['hostname']} ({receiver_ip})")
 
-# File and timer input
+
+# === SELECT FILE ===
 root = tk.Tk()
 root.withdraw()
-filename = filedialog.askopenfilename(title="Select file to send")
+filepath = filedialog.askopenfilename(title="Select file to send")
+state.filename = os.path.basename(filepath)
+state.file_chunks = read_file_chunks(state.filename)
+state.filesize = sum(len(chunk) for chunk in state.file_chunks)
 
-if not filename:
-    print("❌ No file selected. Exiting.")
-    exit()
+# === AUTO DELETION TIME ===
+state.delete_after = int(input("🕒 Enter auto-deletion time (in seconds): "))
 
-delete_after = int(input("🕒 Enter auto-deletion time (in seconds): "))
+# === Setup Socket ===
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.settimeout(state.timeout)
 
-with open(filename, "rb") as f:
-    file_data = f.read()
+# === Start ACK Listener Thread ===
+def listen_for_acks():
+    while not state.transfer_complete:
+        try:
+            data, _ = sock.recvfrom(BUFFER_SIZE)
+            dispatch_packet(data, state, sock)
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print(f"⚠️ Error in ACK listener: {e}")
 
-# Connect to receiver
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect((HOST, PORT))
+ack_thread = threading.Thread(target=listen_for_acks, daemon=True)
+ack_thread.start()
 
-# Receive receiver's public RSA key
-key_len_data = client.recv(4)
-if len(key_len_data) < 4:
-    raise Exception("Failed to receive key length.")
+# === Begin Protocol Sequence ===
 
-key_len = struct.unpack("I", key_len_data)[0]
-receiver_pubkey_data = b""
-while len(receiver_pubkey_data) < key_len:
-    receiver_pubkey_data += client.recv(key_len - len(receiver_pubkey_data))
+# Send SYN
+print("📨 Sending SYN...")
+sock.sendto(bytes([PacketType.SYN]), state.receiver_addr)
 
-print("✅ Received receiver's public RSA key.")
+# Wait for ACK_SYN
+print("⏳ Waiting for ACK_SYN...")
+while not state.ack_syn_received:
+    time.sleep(0.1)
 
-# Load public key
-rsa_pub_key = RSA.import_key(receiver_pubkey_data)
+# Wait for RSA_KEY
+#print("⏳ Waiting for receiver's RSA key...")
+while not state.rsa_receiver_key:
+    time.sleep(0.1)
 
-# Encrypt file and AES key
-aes_key = generate_aes_key()
-encrypted_file_data = encrypt_data(file_data, aes_key)
-encrypted_aes_key = encrypt_aes_key(aes_key, rsa_pub_key)
+# Generate AES key and nonce
+generate_aes_key_and_nonce(state)
+    
+encrypted_aes_key = encrypt_aes_key_with_rsa(state)
+sock.sendto(bytes([PacketType.RSA_KEY]) + encrypted_aes_key, state.receiver_addr)
+print("🔐 Sent AES key (encrypted with RSA key)")
 
-file_name_only = os.path.basename(filename)
+#FOR DEBUGGING
+#print(f"[DEBUG] RSA_KEY packet size: {1 + len(encrypted_aes_key)} (1 byte header + {len(encrypted_aes_key)} byte payload)")
 
-# Send filename and timer
-client.send(struct.pack("I", len(file_name_only)))
-client.send(file_name_only.encode())
-client.send(struct.pack("I", delete_after))
+# Send AES key will be handled by ACK_SYN handler
 
-# Send encrypted AES key
-client.send(struct.pack("I", len(encrypted_aes_key)))
-client.send(encrypted_aes_key)
+# Wait for ACK_AES
+print("⏳ Waiting for ACK_AES...")
+while not state.ack_aes_received:
+    time.sleep(0.1)
 
-# Send encrypted file data
-client.send(struct.pack("I", len(encrypted_file_data)))
-client.sendall(encrypted_file_data)
+# Send metadata handled by ACK_AES handler
 
-print(f"✅ '{file_name_only}' sent with {delete_after}s auto-deletion")
-client.close()
+# Wait for ACK_META
+print("⏳ Waiting for ACK_META...")
+while not state.ack_meta_received:
+    time.sleep(0.1)
 
+# === Start File Transfer in Thread ===
+def transfer_thread():
+    print("📦 Starting file transfer...")
+    send_file_chunks(state, sock)
 
-# import socket
-# import struct
-# import os
-# from test_encryption import encrypt_data, encrypt_aes_key
-# from Crypto.PublicKey import RSA
+file_thread = threading.Thread(target=transfer_thread)
+file_thread.start()
 
-# def create_packet(packet_type, payload):
-#     return packet_type + payload  # Simple: 4-byte header + data
+# Wait for file transfer to complete
+file_thread.join()
 
-# def send_raw_packet(dest_ip, payload):
-#     sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+# Wait for ACK_FIN
+print("⏳ Waiting for ACK_FIN...")
+while not state.ack_fin_received:
+    time.sleep(0.1)
 
-#     # IP header will be auto-filled by OS if we use IPPROTO_RAW
-#     sock.sendto(payload, (dest_ip, 0))
-
-# # === Prepare data ===
-# filename = "my_secret.pdf"
-# delete_after = 10
-
-# with open(filename, "rb") as f:
-#     data = f.read()
-
-# aes_key = os.urandom(32)
-# encrypted_data = encrypt_data(data, aes_key)
-
-# rsa_pub_key = RSA.import_key(open("receiver_public.pem", "rb").read())
-# encrypted_aes_key = encrypt_aes_key(aes_key, rsa_pub_key)
-
-# dest_ip = "192.168.0.101"  # Set receiver IP manually
-
-# # === Send packets ===
-# send_raw_packet(dest_ip, create_packet(b'META', struct.pack("I", delete_after) + filename.encode()))
-# send_raw_packet(dest_ip, create_packet(b'KEY_', encrypted_aes_key))
-
-# # Break data into chunks
-# chunk_size = 1400
-# for i in range(0, len(encrypted_data), chunk_size):
-#     chunk = encrypted_data[i:i+chunk_size]
-#     send_raw_packet(dest_ip, create_packet(b'DATA', chunk))
-
-# send_raw_packet(dest_ip, create_packet(b'END_', b'done'))
-
-# print("✅ Sent via raw sockets.")
+print("✅ File transfer completed successfully.... Closed connection")
