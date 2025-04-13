@@ -20,6 +20,7 @@ def handle_syn(packet: bytes, addr, state: ReceiverState, sock):
 
     # Respond with ACK_SYN
     sock.sendto(struct.pack("!B", PacketType.ACK_SYN), addr)
+    log_info(f"🔗 Connected to {addr}")
 
     # Send public RSA key
     try:
@@ -33,7 +34,7 @@ def handle_syn(packet: bytes, addr, state: ReceiverState, sock):
 
 
 def handle_rsa_key(packet: bytes, addr, state: ReceiverState, sock):
-    print("🔐 Received AES key (RSA_KEY)")
+    print("🔐 Received AES key (encrypted with RSA_KEY)")
     encrypted_key = packet[1:]
 
     #FOR DEBUGGING
@@ -78,6 +79,7 @@ def handle_meta(packet: bytes, addr, state: ReceiverState, sock):
         log_success(f"📄 Metadata received: {metadata}")
         show_gui_popup("Receiving File", f"File: {state.filename}\nSize: {state.filesize} bytes")
         sock.sendto(struct.pack("!B", PacketType.ACK_META), addr)
+        print("📤 Sent ACK_META")
 
     except Exception as e:
         log_error(f"❌ Failed to decrypt metadata: {e}")
@@ -123,5 +125,6 @@ def handle_fin(packet: bytes, addr, state: ReceiverState, sock):
     log_info(f"📴 Received FIN from {addr}. Closing connection.")
     log_info(f"Receiver Idle and open for new connections...")
     sock.sendto(struct.pack("!B", PacketType.ACK_FIN), addr)
+    print("📤 Sent ACK_FIN and closed connection")
     show_gui_popup("Connection Closed", "Transfer session has ended.")
     state.reset()

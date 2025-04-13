@@ -53,16 +53,3 @@ def decrypt_aes(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
     cipher_aes = AES.new(key, AES.MODE_CBC, iv)
     decrypted = cipher_aes.decrypt(ciphertext)
     return unpad(decrypted, AES.block_size)
-
-def encrypt_rsa(plaintext: bytes, public_key: RSA.RsaKey) -> bytes:
-    """
-    Encrypts data using the RSA public key with OAEP padding.
-    """
-    cipher_rsa = PKCS1_OAEP.new(public_key)
-    return cipher_rsa.encrypt(plaintext)
-
-# DELETE IF WE DON"T USE AES EAX
-def decrypt_aes_eax(ciphertext: bytes, key: bytes, nonce: bytes) -> bytes:
-    cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
-    return cipher.decrypt(ciphertext)
-
