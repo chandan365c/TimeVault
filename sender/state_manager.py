@@ -1,5 +1,5 @@
 import os
-from Cryptodome.Cipher import AES
+from Crypto.Cipher import AES
 from sender.constants import WINDOW_SIZE, TIMEOUT, CHUNK_SIZE
 
 class SenderState:
@@ -56,7 +56,8 @@ class SenderState:
 
     def encrypt_chunk(self, chunk):
         cipher = AES.new(self.aes_key, AES.MODE_EAX)
-        return cipher.nonce + cipher.encrypt(chunk)
+        ciphertext, tag = cipher.encrypt_and_digest(chunk)
+        return cipher.nonce + tag + ciphertext
 
     def reset(self):
         print("♻️ Resetting sender state...")

@@ -1,6 +1,5 @@
-from Cryptodome.PublicKey import RSA
-from Cryptodome.Cipher import PKCS1_OAEP, AES
-from Cryptodome.Util.Padding import unpad
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
 import os
 
 def generate_rsa_keys(private_key_path="receiver_private.pem", public_key_path="receiver_public.pem", key_size=2048):
@@ -44,12 +43,3 @@ def decrypt_aes_key_packet(encrypted_packet: bytes, private_key_path="receiver_p
     aes_key = decrypted_blob[:32]
     nonce = decrypted_blob[32:48]
     return aes_key, nonce
-
-def decrypt_aes(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
-    """
-    Decrypts AES-encrypted data using the provided AES key and IV.
-    Assumes AES in CBC mode and PKCS7 padding.
-    """
-    cipher_aes = AES.new(key, AES.MODE_CBC, iv)
-    decrypted = cipher_aes.decrypt(ciphertext)
-    return unpad(decrypted, AES.block_size)

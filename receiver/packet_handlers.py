@@ -4,7 +4,7 @@ from receiver.state_manager import ReceiverState
 from receiver.crypto_utils import decrypt_aes_key_packet
 from receiver.utils import log_info, log_warn, log_error, log_success, show_gui_popup
 from receiver.constants import CHUNK_SIZE, PacketType
-from Cryptodome.Cipher import AES
+from Crypto.Cipher import AES
 from receiver.file_utils import save_chunk_to_file
 
 
@@ -65,9 +65,21 @@ def handle_meta(packet: bytes, addr, state: ReceiverState, sock):
 
     try:
         encrypted_meta = packet[1:]  # Skip PacketType byte
-        cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=encrypted_meta[:16])
-        plaintext = cipher.decrypt(encrypted_meta[16:])
-        metadata = json.loads(plaintext.decode())
+        nonce = encrypted_meta[:16]
+        tag = encrypted_meta[16:32]
+        ciphertext = encrypted_meta[32:]
+
+        #cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=encrypted_meta[:16])
+        cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=nonce)
+        try:
+            decrypted = cipher.decrypt_and_verify(ciphertext, tag)
+            metadata = json.loads(decrypted.decode())
+        except ValueError:
+            log_error("❌ Metadata decryption failed: tag mismatch!")
+            return
+        
+        # plaintext = cipher.decrypt(encrypted_meta[16:])
+        # metadata = json.loads(plaintext.decode())
 
         state.filename = metadata["filename"]
         state.filesize = metadata["filesize"]
@@ -92,14 +104,28 @@ def handle_data(packet: bytes, addr, state: ReceiverState, sock):
         return
 
     try:
-        seq_num = struct.unpack("!I", packet[1:5])[0]
+        #seq_num = struct.unpack("!I", packet[1:5])[0]
+        #encrypted_chunk = packet[5:]
+        seq_num = int.from_bytes(packet[1:5], byteorder='big')
         encrypted_chunk = packet[5:]
+
+        # Decrypt nonce + tag + ciphertext
+        nonce = encrypted_chunk[:16]
+        tag = encrypted_chunk[16:32]
+        ciphertext = encrypted_chunk[32:]
+
+        try:
+            cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=nonce)
+            chunk = cipher.decrypt_and_verify(ciphertext, tag)
+        except ValueError:
+            log_error(f"❌ Tag mismatch for chunk {seq_num} — possible tampering!")
+            return
 
         if seq_num in state.received_chunks:
             log_info(f"🔁 Duplicate chunk #{seq_num} received. Ignoring.")
         else:
-            cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=encrypted_chunk[:16])
-            chunk = cipher.decrypt(encrypted_chunk[16:])
+            #cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=encrypted_chunk[:16])
+            #chunk = cipher.decrypt(encrypted_chunk[16:])
             state.received_chunks[seq_num] = chunk
             log_info(f"✅ Received and stored chunk #{seq_num}")
 

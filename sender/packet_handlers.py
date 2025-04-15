@@ -1,5 +1,5 @@
 import time
-from Cryptodome.PublicKey import RSA
+from Crypto.PublicKey import RSA
 from sender.constants import PacketType
 from sender.crypto_utils import encrypt_metadata
 from sender.packet_utils import create_data_packet, create_fin_packet

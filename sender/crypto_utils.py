@@ -1,7 +1,7 @@
 import json
-from Cryptodome.Cipher import AES, PKCS1_OAEP
-from Cryptodome.PublicKey import RSA
-from Cryptodome.Random import get_random_bytes
+from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
 from sender.state_manager import SenderState
 
 def generate_aes_key_and_nonce(state: SenderState):
@@ -47,8 +47,9 @@ def encrypt_metadata(state: SenderState, ttl: int = 60):
         "ttl": ttl
     }
     cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=state.aes_nonce)
-    ciphertext = cipher.encrypt(json.dumps(metadata).encode())
-    return state.aes_nonce + ciphertext
+    ciphertext, tag = cipher.encrypt_and_digest(json.dumps(metadata).encode())
+    return state.aes_nonce + tag + ciphertext
+
 
 def load_receiver_rsa_key(path: str) -> RSA.RsaKey:
     """
