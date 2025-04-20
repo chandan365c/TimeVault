@@ -9,7 +9,7 @@ class ReceiverState:
         # Connection & protocol state
         self.sender_addr = None
         self.connected = False
-        self.state = "IDLE"  # Possible: IDLE, AWAITING_AES_KEY, AWAITING_META, RECEIVING_FILE, FILE_COMPLETE
+        self.state = "IDLE"  # Possible states: IDLE, AWAITING_AES_KEY, AWAITING_META, RECEIVING_FILE, FILE_COMPLETE
 
         # Key management
         self.private_key_path = "receiver_private.pem"
