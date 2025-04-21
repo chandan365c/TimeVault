@@ -49,14 +49,3 @@ def encrypt_metadata(state: SenderState, ttl: int = 60):
     cipher = AES.new(state.aes_key, AES.MODE_EAX, nonce=state.aes_nonce)
     ciphertext, tag = cipher.encrypt_and_digest(json.dumps(metadata).encode())
     return state.aes_nonce + tag + ciphertext
-
-
-def load_receiver_rsa_key(path: str) -> RSA.RsaKey:
-    """
-    Loads the receiver's RSA public key from file.
-    """
-    with open(path, 'rb') as f:
-        key_data = f.read()
-    rsa_key = RSA.import_key(key_data)
-    print("🔑 Receiver RSA public key loaded.")
-    return rsa_key

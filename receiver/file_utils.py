@@ -19,7 +19,7 @@ def save_chunk_to_file(state: ReceiverState):
 
     safe_filename = sanitize_filename(state.filename)
     file_path = os.path.join(output_dir, safe_filename)
-    state.file_save_path = file_path  # Optional: store path for deletion timer
+    state.file_save_path = file_path  # store path for deletion timer
 
     with open(file_path, 'wb') as f:
         for i in range(state.expected_chunks):
