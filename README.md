@@ -71,3 +71,7 @@ Cross-platform PyQt or Tkinter-based interface for easier use.
 
 - **Package as CLI Tool:**
 pip install timevault with command-line commands like timevault send --file xyz.
+
+
+## Collaborators:
+- [Cheruku Manas Ram](https://github.com/satoqibi)
